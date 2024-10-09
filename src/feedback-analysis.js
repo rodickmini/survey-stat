@@ -1,74 +1,55 @@
-const xlsx = require('xlsx');
+const XLSX = require('xlsx');
 const fs = require('fs');
 const path = require('path');
 
-// 设置文件路径
-const inputFilePath = path.join(__dirname, '../data/input/feedback.xlsx'); // 替换为你的Excel文件名
-const outputFilePath = path.join(__dirname, '../data/output/categorized_feedback.xlsx'); // 输出的文件名
+// 输入和输出文件路径
+const inputFilePath = path.join(__dirname, '../data/input/feedback.xlsx'); // 请确保input.xlsx在同一目录下
+const outputFilePath = path.join(__dirname, '../data/output/feedback_sorted.xlsx');
 
 // 读取Excel文件
-const workbook = xlsx.readFile(inputFilePath);
-const sheetName = workbook.SheetNames[0];
-const worksheet = workbook.Sheets[sheetName];
-
-// 将工作表转换为JSON数组，每一行是一个对象
-const jsonData = xlsx.utils.sheet_to_json(worksheet);
-
-// 获取反馈数据列
-const feedbackColumn = '第九题：您对IM产品还有哪些其他的建议或意见？';
-
-// 定义分类
-const categories = {
-    '功能改进': ['增加', '改进', '功能', '增强', '清除缓存'],
-    'bug反馈': ['bug', '问题', '卡顿', '崩溃'],
-    '无意见': ['无', '没有', '暂时没有', '暂无'],
-    '其他': []
-};
-
-// 分类函数
-function categorizeFeedback(feedback) {
-    for (let category in categories) {
-        const keywords = categories[category];
-        if (keywords.some(keyword => feedback.includes(keyword))) {
-            return category;
-        }
+function readExcel(filePath) {
+    if (!fs.existsSync(filePath)) {
+        console.error(`文件不存在: ${filePath}`);
+        process.exit(1);
     }
-    return '其他';
+
+    const workbook = XLSX.readFile(filePath);
+    const sheetName = workbook.SheetNames[0]; // 读取第一个工作表
+    const sheet = workbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(sheet, { header: 1 }); // 按行读取，header:1表示按数组返回
+
+    // 假设数据在第一列
+    const columnData = data.map(row => row[0]).filter(cell => typeof cell === 'string');
+
+    return columnData;
 }
 
-// 初始化分类结果
-const categorizedFeedback = {
-    '功能改进': [],
-    'bug反馈': [],
-    '无意见': [],
-    '其他': []
-};
+// 处理数据：去重并按字符串长度从长到短排序
+function processData(data) {
+    // 去重
+    const uniqueData = Array.from(new Set(data));
 
-// 处理反馈数据
-jsonData.forEach(row => {
-    const feedback = row[feedbackColumn] ? String(row[feedbackColumn]) : '';  // 确保反馈是字符串
-    const category = categorizeFeedback(feedback);
-    categorizedFeedback[category].push(feedback);
-});
+    // 按长度排序（从长到短）
+    uniqueData.sort((a, b) => b.length - a.length);
 
-// 准备写入Excel的格式
-const outputData = [];
-
-// 将分类结果转换为适合写入Excel的格式
-for (let category in categorizedFeedback) {
-    categorizedFeedback[category].forEach(feedback => {
-        outputData.push({ '分类': category, '反馈': feedback });
-    });
+    return uniqueData;
 }
 
-// 将分类后的反馈数据转换为Excel工作表
-const newWorksheet = xlsx.utils.json_to_sheet(outputData);
+// 写入Excel文件
+function writeExcel(data, filePath) {
+    const worksheetData = data.map(item => [item]); // 转换为二维数组，每个元素为一行
+    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+    XLSX.writeFile(workbook, filePath);
+    console.log(`处理后的数据已写入: ${filePath}`);
+}
 
-// 创建新的工作簿
-const newWorkbook = xlsx.utils.book_new();
-xlsx.utils.book_append_sheet(newWorkbook, newWorksheet, '分类反馈');
+// 主函数
+function main() {
+    const inputData = readExcel(inputFilePath);
+    const processedData = processData(inputData);
+    writeExcel(processedData, outputFilePath);
+}
 
-// 保存到新的Excel文件
-xlsx.writeFile(newWorkbook, outputFilePath);
-
-console.log(`分类反馈结果已保存到 ${outputFilePath}`);
+main();
